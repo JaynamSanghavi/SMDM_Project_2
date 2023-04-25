@@ -1,9 +1,5 @@
-import warnings
-warnings.filterwarnings('ignore')
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 from tqdm import tqdm
 import re
@@ -16,72 +12,70 @@ from nltk.corpus import stopwords
 from nltk.corpus import wordnet
 
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.feature_extraction.text import CountVectorizer
-
-from sklearn import metrics
 from sklearn.metrics import accuracy_score
-from sklearn.metrics import confusion_matrix
-
 from sklearn.model_selection import train_test_split
-from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import SVC
 
-from flask import Flask, request, jsonify
+from flask import Flask, request
 app = Flask(__name__)
 
-def decontracted(phrase):
-    phrase = re.sub(r"won't", "will not", phrase)
-    phrase = re.sub(r"can\'t", "can not", phrase)
-    phrase = re.sub(r"n\'t", " not", phrase)
-    phrase = re.sub(r"\'re", " are", phrase)
-    phrase = re.sub(r"\'s", " is", phrase)
-    phrase = re.sub(r"\'d", " would", phrase)
-    phrase = re.sub(r"\'ll", " will", phrase)
-    phrase = re.sub(r"\'t", " not", phrase)
-    phrase = re.sub(r"\'ve", " have", phrase)
-    phrase = re.sub(r"\'m", " am", phrase)
-    return phrase
 
-def cleaning(data):
-  preprocessed_reviews = []
-  eng_stopwords = set(stopwords.words('english'))
-  for sentance in tqdm(data['review'].values):
-    sentance = re.sub(r"http\S+", "", sentance)
-    sentance = BeautifulSoup(sentance, 'lxml').get_text()
-    sentance = decontracted(sentance)
-    sentance = re.sub("\S*\d\S*", "", sentance).strip()
-    sentance = re.sub('[^A-Za-z]+', ' ', sentance)
-    sentance = ' '.join(e.lower() for e in sentance.split() if e.lower() not in eng_stopwords)# removing stopwords and 
-                                                                                           #converting into lower case
-    preprocessed_reviews.append(sentance.strip())
-  data['review']=preprocessed_reviews
+#decosntructing the words like won't to will not
+
+def decontracted(words):
+    words = re.sub(r"won't", "will not", words)
+    words = re.sub(r"can\'t", "can not", words)
+    words = re.sub(r"n\'t", " not", words)
+    words = re.sub(r"\'re", " are", words)
+    words = re.sub(r"\'s", " is", words)
+    words = re.sub(r"\'d", " would", words)
+    words = re.sub(r"\'ll", " will", words)
+    words = re.sub(r"\'t", " not", words)
+    words = re.sub(r"\'ve", " have", words)
+    words = re.sub(r"\'m", " am", words)
+    return words
+
+#removing the urls, tags, decontructing the word, number, special character and stop words from the data
+def preProcessing(data):
+  preProcessedReviews = []
+  englishStopWords = set(stopwords.words('english'))
+  for comments in tqdm(data['review'].values):
+    comments = re.sub(r"http\S+", "", comments)
+    comments = decontracted(comments)
+    comments = BeautifulSoup(comments, 'lxml').get_text()
+    comments = re.sub("\S*\d\S*", "", comments).strip()
+    comments = re.sub('[^A-Za-z]+', ' ', comments)
+    comments = ' '.join(e.lower() for e in comments.split() if e.lower() not in englishStopWords)
+    preProcessedReviews.append(comments.strip())
+  data['review']=preProcessedReviews
   return data
 
+#stemming the data
 def stemmer(data):
-  review_clean_ps = []
+  cleanComment = []
   ps = PorterStemmer()
-  for sentance in tqdm(data['review'].values):
-    ps_stems = []
-    for w in sentance.split():
+  for comments in tqdm(data['review'].values):
+    psStems = []
+    for w in comments.split():
       if w == 'oed':
         continue
-      ps_stems.append(ps.stem(w))  
+      psStems.append(ps.stem(w))  
      
-    review_clean_ps.append(' '.join(ps_stems))   
-  data['review']=review_clean_ps
+    cleanComment.append(' '.join(psStems))   
+  data['review']=cleanComment
   return data
 
-def get_wordnet_pos(treebank_tag):
+def getWordnetPos(treebankTag):
 
-    if treebank_tag.startswith('J'):
+    if treebankTag.startswith('J'):
         return wordnet.ADJ
-    elif treebank_tag.startswith('V'):
+    elif treebankTag.startswith('V'):
         return wordnet.VERB
-    elif treebank_tag.startswith('N'):
+    elif treebankTag.startswith('N'):
         return wordnet.NOUN
-    elif treebank_tag.startswith('R'):
+    elif treebankTag.startswith('R'):
         return wordnet.ADV
     else:
         return 'n'
@@ -89,17 +83,18 @@ def get_wordnet_pos(treebank_tag):
 nltk.download('averaged_perceptron_tagger')
 nltk.download('wordnet')
 
+#lemmatizing the data
 def lemmatization(data):
-  review_clean_wnl = []
+  cleanCommentWnl = []
   wnl = WordNetLemmatizer()
-  for sentance in tqdm(data['review'].values):
-     wnl_stems = []
-     token_tag = pos_tag(sentance.split())
+  for comments in tqdm(data['review'].values):
+     wnlStems = []
+     token_tag = pos_tag(comments.split())
      for pair in token_tag:
-       res = wnl.lemmatize(pair[0],pos=get_wordnet_pos(pair[1]))
-       wnl_stems.append(res)
-     review_clean_wnl.append(' '.join(wnl_stems))
-  data['review']=review_clean_wnl
+       res = wnl.lemmatize(pair[0],pos=getWordnetPos(pair[1]))
+       wnlStems.append(res)
+     cleanCommentWnl.append(' '.join(wnlStems))
+  data['review']=cleanCommentWnl
   return data
 
 
@@ -107,33 +102,30 @@ def lemmatization(data):
 def hello_world():
    return "Hello World"
 
+#route for pre processing the data, it would be done first time only. Not need to run as clean csv is uploaded on github.
 @app.route('/dataPreprosessing')
 def preProcess():
     data = pd.read_csv("https://raw.githubusercontent.com/JaynamSanghavi/SMDM_Project_2/master/dataset/IMDBDataset.tsv",header=0, delimiter="\t", quoting=3)
-    #removing duplicate rows
-    print('REMOVING DUPLICATE ROWS....')
     data=data.drop_duplicates(subset=['review'], keep='first', inplace=False)
-    data.shape
-    data_after_cleaning=cleaning(data) #dataframe after cleaning
-    data_after_cleaning.to_csv('after_cleaning.csv')# saving csv file after cleaning
-    return data_after_cleaning.to_string()
+    dataAfterCleaning=preProcessing(data)
+    dataAfterCleaning.to_csv('after_cleaning.csv')
+    return dataAfterCleaning.to_string()
 
+#method predicting if the user comment is negative or positive using Linear Regression
 def predictUsingLR(comment):
   dataClean = pd.read_csv("https://raw.githubusercontent.com/JaynamSanghavi/SMDM_Project_2/master/backend/after_cleaning.csv")
   print("Doing stemmer\n")
-  data_stemmer=stemmer(dataClean)
+  dataStemmer=stemmer(dataClean)
   print("Doing lemma\n")
-  data_lemma=lemmatization(data_stemmer)
+  dataLemmatizing=lemmatization(dataStemmer)
   X=dataClean['review']
   Y=dataClean['sentiment']
-  # splitting into train and test dataset
   X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.25,random_state=42)
-  #tfidf
   tfidfvectorizer = TfidfVectorizer(min_df=10,max_features=5000)
-  text_tfidf = tfidfvectorizer.fit(X_train.values) #fitting
+  textTfidf = tfidfvectorizer.fit(X_train.values)
   X_train_tfidf =tfidfvectorizer.transform(X_train.values) 
   X_test_tfidf =tfidfvectorizer.transform(X_test.values)
-  lr= LogisticRegression(C= 3.727593720314938)
+  lr= LogisticRegression(C= 3.72)
   lr.fit(X_train_tfidf,  y_train)
   acc = (accuracy_score(y_test,lr.predict(X_test_tfidf)))
   print("Accuracy: ",acc)
@@ -145,21 +137,21 @@ def predictUsingLR(comment):
   else:
       return "Positive"
 
-def predictUsingNBC():
+
+#method predicting if the user comment is negative or positive using Naive Bayes Classifier
+def predictUsingNBC(comment):
   data = pd.read_csv("https://raw.githubusercontent.com/JaynamSanghavi/SMDM_Project_2/master/dataset/IMDBDataset.tsv",header=0, delimiter="\t", quoting=3)
   dataClean = pd.read_csv("https://raw.githubusercontent.com/JaynamSanghavi/SMDM_Project_2/master/backend/after_cleaning.csv")
   print("Doing stemmer\n")
-  data_stemmer=stemmer(dataClean)
+  dataStemmer=stemmer(dataClean)
   print("Doing lemma\n")
-  data_lemma=lemmatization(data_stemmer)
+  dataLemmatizing=lemmatization(dataStemmer)
   X=dataClean['review']
   Y=dataClean['sentiment']
-  # splitting into train and test dataset
   X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.25,random_state=42)
-  #tfidf
   print("Doing tfidf\n")
   tfidfvectorizer = TfidfVectorizer(min_df=10,max_features=5000)
-  text_tfidf = tfidfvectorizer.fit(X_train.values) #fitting
+  textTfidf = tfidfvectorizer.fit(X_train.values) #fitting
 
   X_train_tfidf =tfidfvectorizer.transform(X_train.values) 
   X_test_tfidf =tfidfvectorizer.transform(X_test.values)
@@ -167,7 +159,8 @@ def predictUsingNBC():
   navie_clf=MultinomialNB(alpha=1, class_prior=[0.5, 0.5], fit_prior=True)
   navie_clf.fit(X_train_tfidf, y_train)
   acc = accuracy_score(y_test,navie_clf.predict(X_test_tfidf))
-  a = ["This is a great movie"]
+  print("Accuracy: ",acc)
+  a = [comment]
   a_tfidf =tfidfvectorizer.transform(a)
   p_answer = navie_clf.predict(a_tfidf)
   if p_answer[0] == 0:
@@ -175,22 +168,20 @@ def predictUsingNBC():
   else:
       return "Positive"
 
-def predictUsingSVM():
+#method predicting if the user comment is negative or positive using Support Vector Machine
+def predictUsingSVM(comment):
   data = pd.read_csv("https://raw.githubusercontent.com/JaynamSanghavi/SMDM_Project_2/master/dataset/IMDBDataset.tsv",header=0, delimiter="\t", quoting=3)
   dataClean = pd.read_csv("https://raw.githubusercontent.com/JaynamSanghavi/SMDM_Project_2/master/backend/after_cleaning.csv")
   print("Doing stemmer\n")
-  data_stemmer=stemmer(dataClean)
+  dataStemmer=stemmer(dataClean)
   print("Doing lemma\n")
-  data_lemma=lemmatization(data_stemmer)
+  dataLemmatizing=lemmatization(dataStemmer)
   X=dataClean['review']
   Y=dataClean['sentiment']
-  # splitting into train and test dataset
   X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.25,random_state=42)
-  #tfidf
   print("Doing tfidf\n")
   tfidfvectorizer = TfidfVectorizer(min_df=10,max_features=5000)
-  text_tfidf = tfidfvectorizer.fit(X_train.values) #fitting
-
+  textTfidf = tfidfvectorizer.fit(X_train.values)
   X_train_tfidf =tfidfvectorizer.transform(X_train.values) 
   X_test_tfidf =tfidfvectorizer.transform(X_test.values)
   print("Doing model\n")
@@ -200,15 +191,16 @@ def predictUsingSVM():
     tol=0.001, verbose=False)
   svm.fit(X_train_tfidf, y_train)
   acc = accuracy_score(y_test,svm.predict(X_test_tfidf))
-  print("Accuracy: ",(accuracy_score(y_test,svm.predict(X_test_tfidf))))
-  a = ["This is a great movie"]
+  print("Accuracy: ",acc)
+  a = [comment]
   a_tfidf =tfidfvectorizer.transform(a)
-  p_answer = navie_clf.predict(a_tfidf)
+  p_answer = svm.predict(a_tfidf)
   if p_answer[0] == 0:
       return "Negative"
   else:
       return "Positive"
 
+#this route will help to predict the if the user comment is positive or negative
 @app.route('/predictComment', methods=['POST']) 
 def predictComment():
     comments = request.form.get("comments")
