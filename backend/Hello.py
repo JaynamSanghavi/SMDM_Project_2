@@ -28,7 +28,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import SVC
 
-from flask import Flask
+from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 def decontracted(phrase):
@@ -117,9 +117,8 @@ def preProcess():
     data_after_cleaning=cleaning(data) #dataframe after cleaning
     data_after_cleaning.to_csv('after_cleaning.csv')# saving csv file after cleaning
     return data_after_cleaning.to_string()
-   
-@app.route('/predictUsingLogisticRegression')
-def predictUsingLR():
+
+def predictUsingLR(comment):
   dataClean = pd.read_csv("https://raw.githubusercontent.com/JaynamSanghavi/SMDM_Project_2/master/backend/after_cleaning.csv")
   print("Doing stemmer\n")
   data_stemmer=stemmer(dataClean)
@@ -138,7 +137,7 @@ def predictUsingLR():
   lr.fit(X_train_tfidf,  y_train)
   acc = (accuracy_score(y_test,lr.predict(X_test_tfidf)))
   print("Accuracy: ",acc)
-  a = ["This is a great movie"]
+  a = [comment]
   a_tfidf =tfidfvectorizer.transform(a)
   p_answer = lr.predict(a_tfidf)
   if p_answer[0] == 0:
@@ -146,7 +145,6 @@ def predictUsingLR():
   else:
       return "Positive"
 
-@app.route('/predictUsingNaiveBayesClassifier')
 def predictUsingNBC():
   data = pd.read_csv("https://raw.githubusercontent.com/JaynamSanghavi/SMDM_Project_2/master/dataset/IMDBDataset.tsv",header=0, delimiter="\t", quoting=3)
   dataClean = pd.read_csv("https://raw.githubusercontent.com/JaynamSanghavi/SMDM_Project_2/master/backend/after_cleaning.csv")
@@ -177,7 +175,6 @@ def predictUsingNBC():
   else:
       return "Positive"
 
-@app.route('/predictUsingSVM')
 def predictUsingSVM():
   data = pd.read_csv("https://raw.githubusercontent.com/JaynamSanghavi/SMDM_Project_2/master/dataset/IMDBDataset.tsv",header=0, delimiter="\t", quoting=3)
   dataClean = pd.read_csv("https://raw.githubusercontent.com/JaynamSanghavi/SMDM_Project_2/master/backend/after_cleaning.csv")
@@ -211,6 +208,12 @@ def predictUsingSVM():
       return "Negative"
   else:
       return "Positive"
+
+@app.route('/predictComment', methods=['POST']) 
+def predictComment():
+    comments = request.form.get("comments")
+    return predictUsingLR(comments)
+
 
 if __name__ == '__main__':
    app.run()
